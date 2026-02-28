@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pydot
+numpy
+pandas
+matplotlib
+seaborn
+joblib
+SQLAlchemy
+pyodbc
+openpyxl
+psutil
+Pillow
+chardet
+python-dateutil
+colorama
+keyboard

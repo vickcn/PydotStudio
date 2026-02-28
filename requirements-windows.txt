@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pydot
+numpy
+pandas
+matplotlib
+joblib
+pyodbc
+openpyxl
+psutil
+Pillow
+chardet
+python-dateutil
+colorama
+keyboard
