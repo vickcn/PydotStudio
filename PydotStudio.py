@@ -56,14 +56,70 @@ DEFAULT_CONFIG = {
     "font_path": BASE_DIR,
 }
 
+DEFAULT_VIEWER_CONFIG: Dict[str, Any] = {
+    "default_render_mode": "cytoscape_2d",
+    "cytoscape_2d": {
+        "node_label_color_on_light_fill": "#0f172a",
+        "node_label_color_on_dark_fill": "#e5e7eb",
+        "light_fill_luminance_threshold": 0.65,
+    },
+    "three_3d": {
+        "node_background_opacity": 0.4,
+        "node_border_color": "#38bdf8",
+        "node_label_color": "#0f172a",
+        "link_color": "#64748b",
+        "link_opacity": 0.88,
+        "background_color": "#050816",
+        "show_particles": False,
+        "warmup_ticks": 200,
+        "cooldown_ticks": 0,
+        "charge_strength": -140,
+        "link_distance": 56,
+        "center_strength": 0.04,
+        "velocity_decay": 0.22,
+        "alpha_decay": 0.015,
+        "sprite_min_width": 120,
+        "sprite_height": 44,
+        "sprite_padding_x": 18,
+        "sprite_font_family": "Microsoft JhengHei, Segoe UI, sans-serif",
+        "sprite_font_size_px": 13,
+        "focus_target_screen_fraction": 0.3333333333333333,
+        "focus_transition_ms": 920,
+        "focus_viewport_boost": 1.22,
+        "focus_fallback_distance_extra": 108,
+        "focus_sprite_world_extent": 40,
+        "focus_min_cam_separation": 26,
+        "focus_zoom_in_hard_cap_ratio": 0.985,
+        "link_directional_arrow_length": 7.5,
+        "link_directional_arrow_rel_pos": 1,
+        "link_curvature": 0.14,
+        "label_text_stroke_color": "#000000",
+        "label_text_stroke_width_px": 2.75,
+    },
+}
+
+
+def _deep_merge_dict(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = dict(base)
+    for k, v in overlay.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge_dict(out[k], v)
+        else:
+            out[k] = v
+    return out
+
 
 def load_config(path: str = CONFIG_PATH) -> Dict[str, Any]:
+    raw: Dict[str, Any] = {}
     if os.path.isfile(path):
-        # with open(path, "r", encoding="utf-8") as f:
-        #     return json.load(f)
-        config = load_json_robust(path, encoding="utf-8-sig")
-        return config
-    return DEFAULT_CONFIG.copy()
+        raw = load_json_robust(path, encoding="utf-8-sig")
+    merged = DEFAULT_CONFIG.copy()
+    for k, v in raw.items():
+        if k == "viewer":
+            continue
+        merged[k] = v
+    merged["viewer"] = _deep_merge_dict(DEFAULT_VIEWER_CONFIG, raw.get("viewer") or {})
+    return merged
 
 
 CONFIG = load_config()

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PydotStudio Flow Editor</title>
+  <link rel="stylesheet" href="/static/css/flow_editor.css" />
+  <script src="https://unpkg.com/cytoscape@3.29.2/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/3d-force-graph@1.73.5/dist/3d-force-graph.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="left-panel glass-panel">
+      <div class="brand-block">
+        <div class="brand-mark">P</div>
+        <div>
+          <h1>PydotStudio</h1>
+          <p>Flow JSON Viewer</p>
+        </div>
+      </div>
+
+      <section class="toolbar-section">
+        <label class="render-mode-inline">
+          <span class="render-mode-caption">檢視模式</span>
+          <select id="renderModeSelect" class="mode-select" title="來源於 config.json viewer.default_render_mode">
+            <option value="cytoscape_2d">2D Cytoscape</option>
+            <option value="three_3d">3D 無重力漂浮</option>
+          </select>
+        </label>
+        <label class="file-picker">
+          <input id="jsonFileInput" type="file" accept=".json,application/json" />
+          <span>載入 Flow JSON</span>
+        </label>
+        <button id="btnRenderSvg" class="primary-btn">後端渲染 SVG</button>
+        <button id="btnDownloadJson" class="ghost-btn">下載目前 JSON</button>
+      </section>
+
+      <section class="info-card">
+        <div class="info-label">目前流程</div>
+        <div id="flowTitle" class="flow-title">尚未載入</div>
+        <div id="flowStats" class="flow-stats">nodes: 0 · edges: 0 · groups: 0</div>
+      </section>
+
+      <section class="search-section">
+        <input id="searchInput" type="search" placeholder="搜尋節點 label / id / meta..." />
+      </section>
+
+      <section class="list-section">
+        <div class="section-title">節點清單</div>
+        <div id="nodeList" class="node-list"></div>
+      </section>
+    </aside>
+
+    <main class="canvas-panel glass-panel">
+      <div class="canvas-header">
+        <div>
+          <div class="eyebrow">Interactive Graph</div>
+          <h2 id="canvasTitle">等待載入 PydotStudio Flow JSON</h2>
+        </div>
+        <div class="canvas-actions">
+          <button id="btnFit" class="small-btn">Fit</button>
+          <button id="btnLayout" class="small-btn">重新排版</button>
+        </div>
+      </div>
+      <div class="canvas-stage">
+        <div id="cy" class="cy-canvas graph-view"></div>
+        <div id="fg3d" class="cy-canvas graph-view hidden"></div>
+        <svg id="fg3dViewportRim" class="viewport-rim-hints hidden" aria-hidden="true"></svg>
+        <div id="graphNavOverlay" class="graph-nav-overlay hidden">
+          <button id="btnNavHome" type="button" class="nav-float-btn ghost-btn">回到起點</button>
+          <button id="btnNavPrev" type="button" class="nav-float-btn ghost-btn">上一個截點</button>
+          <button id="btnNavNext" type="button" class="nav-float-btn ghost-btn">下一個截點</button>
+        </div>
+        <div id="edgeOtherTip" class="edge-other-tip hidden" aria-live="polite"></div>
+      </div>
+      <div id="hoverTooltip" class="hover-tooltip hidden"></div>
+    </main>
+
+    <aside class="right-panel glass-panel">
+      <section class="detail-section">
+        <div class="section-title">選取細節</div>
+        <div id="detailEmpty" class="empty-state">點擊任一框，可在這裡查看完整資訊。</div>
+        <div id="detailContent" class="detail-content hidden"></div>
+      </section>
+
+      <section class="render-section">
+        <div class="section-title">後端 SVG 預覽</div>
+        <div class="render-toolbar">
+          <label><input id="includeMeta" type="checkbox" checked /> include_meta</label>
+        </div>
+        <div id="renderPreview" class="render-preview">
+          <div class="empty-state">按「後端渲染 SVG」後顯示。</div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script src="/static/js/flow_api.js"></script>
+  <script src="/static/js/flow_utils.js"></script>
+  <script src="/static/js/flow_panel.js"></script>
+  <script src="/static/js/flow_graph.js"></script>
+  <script src="/static/js/flow_3d.js"></script>
+  <script src="/static/js/flow_editor.js"></script>
+</body>
+</html>

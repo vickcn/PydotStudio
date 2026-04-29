@@ -205,3 +205,4 @@ report_20250902*
 *.pdf*
 
 *tmp*
+!template

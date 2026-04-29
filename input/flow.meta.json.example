@@ -1,0 +1,63 @@
+{
+  "schema_version": "flow-meta-v1",
+  "project": {
+    "name": "Document Import Pipeline",
+    "owner": "Data Platform Team",
+    "updated_at": "2026-03-03T10:00:00+08:00",
+    "tags": ["import", "rag", "qdrant"]
+  },
+  "defaults": {
+    "status": "todo",
+    "progress": 0,
+    "weight": 1
+  },
+  "nodes": {
+    "N1": {
+      "status": "done",
+      "progress": 100,
+      "weight": 2,
+      "owner": "Ian",
+      "links": [
+        { "title": "Spec", "url": "https://intranet/specs/import", "type": "doc" }
+      ],
+      "updated_at": "2026-03-02T20:10:00+08:00"
+    },
+    "N2": {
+      "status": "doing",
+      "progress": 60,
+      "weight": 3,
+      "owner": "Ian",
+      "tests": [
+        {
+          "name": "unit",
+          "script_ref": "repo:tests/test_chunk_detect.py",
+          "report_url": "https://ci/tests/chunk-detect",
+          "last_run_at": "2026-03-03T09:10:00+08:00",
+          "pass_rate": 0.95
+        }
+      ],
+      "notes": "繁簡/越南文偵測調參中",
+      "updated_at": "2026-03-03T09:30:00+08:00"
+    },
+    "N3": {
+      "status": "blocked",
+      "progress": 20,
+      "weight": 5,
+      "blockers": [
+        {
+          "title": "Qdrant 權限尚未開通",
+          "url": "https://ticket/456",
+          "severity": "high"
+        }
+      ],
+      "links": [
+        { "title": "Qdrant Dashboard", "url": "https://qdrant/ui", "type": "dashboard" }
+      ]
+    }
+  },
+  "metrics": {
+    "computed_at": "2026-03-03T10:05:00+08:00",
+    "completion": 0.62,
+    "blocked_weight_ratio": 0.18
+  }
+}

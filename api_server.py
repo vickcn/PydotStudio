@@ -4,20 +4,32 @@ from typing import Any, Dict, Optional
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from PydotStudio import CONFIG
 from PydotStudio import render_flow as core_render_flow
 from PydotStudio import render_by_file as core_render_by_file
 from PydotStudio import get_media_type
 
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI()
+
+
+@app.get("/")
+def serve_index():
+    return FileResponse(os.path.join(_BASE_DIR, "template", "flow_editor.html"))
 
 
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/viewer-config")
+def viewer_config_route() -> Dict[str, Any]:
+    return CONFIG.get("viewer") or {}
 
 
 @app.post("/render")
@@ -48,6 +60,9 @@ def render_by_file_endpoint(
     if save:
         return result
     return Response(content=result, media_type=get_media_type(fmt_used))
+
+
+app.mount("/static", StaticFiles(directory=os.path.join(_BASE_DIR, "static")), name="static")
 
 
 def _parse_args() -> argparse.Namespace:
