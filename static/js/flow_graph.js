@@ -3,6 +3,7 @@ window.FlowGraph = (() => {
   let flow = null;
   let selectedId = null;
   let onSelectCallback = null;
+  let _zoomRafId = null;
 
   function getViewerCy() {
     const v = window.__PYDOT_VIEWER__ || {};
@@ -45,6 +46,39 @@ window.FlowGraph = (() => {
         : 0.65;
     if (lum >= th) return cfg.node_label_color_on_light_fill || "#0f172a";
     return cfg.node_label_color_on_dark_fill || "#e5e7eb";
+  }
+
+  /*
+   * 依目前 zoom 值，對超出最小螢幕高度 (node_min_screen_px) 的節點強制放大。
+   * 使用 cy.batch() 一次提交，避免多次重排。
+   * 懸停中的節點跳過（hover 已自行放大）。
+   */
+  function enforceMinNodeScreenSize() {
+    if (!cy) return;
+    const cfg = getViewerCy();
+    const minPx =
+      cfg.node_min_screen_px !== undefined && Number.isFinite(Number(cfg.node_min_screen_px))
+        ? Math.max(0, Number(cfg.node_min_screen_px))
+        : 28;
+    if (minPx <= 0) return;
+    const z = cy.zoom();
+    cy.batch(() => {
+      cy.nodes().forEach(n => {
+        if (n.scratch("_isHovered")) return;
+        const natH = n.scratch("_natH");
+        const natW = n.scratch("_natW");
+        if (natH === undefined || natW === undefined) return;
+        const screenH = natH * z;
+        if (screenH < minPx) {
+          const u = minPx / screenH;
+          n.style({ width: natW * u, height: natH * u });
+          n.scratch("_minSzActive", true);
+        } else if (n.scratch("_minSzActive")) {
+          n.style({ width: natW, height: natH });
+          n.scratch("_minSzActive", false);
+        }
+      });
+    });
   }
 
   function init(containerId, onSelect) {
@@ -121,26 +155,63 @@ window.FlowGraph = (() => {
     });
 
     cy.on("tap", "node", evt => selectNode(evt.target.id(), true));
+
     cy.on("mouseover", "node", evt => {
-      const node = findNode(evt.target.id());
-      highlightNeighborhood(evt.target.id());
-      FlowPanel.showTooltip(node, evt.originalEvent.clientX, evt.originalEvent.clientY);
+      const n = evt.target;
+      n.scratch("_isHovered", true);
+      // 懸停放大：以自然尺寸 × node_hover_scale
+      const natW = n.scratch("_natW") !== undefined ? n.scratch("_natW") : n.width();
+      const natH = n.scratch("_natH") !== undefined ? n.scratch("_natH") : n.height();
+      if (n.scratch("_natW") === undefined) { n.scratch("_natW", natW); n.scratch("_natH", natH); }
+      const cfg = getViewerCy();
+      const hs =
+        cfg.node_hover_scale !== undefined && Number.isFinite(Number(cfg.node_hover_scale)) && Number(cfg.node_hover_scale) > 0
+          ? Number(cfg.node_hover_scale) : 1.6;
+      n.stop(true, true);
+      n.animate({ style: { width: natW * hs, height: natH * hs }, duration: 180, easing: "ease-out" });
+      highlightNeighborhood(n.id());
+      FlowPanel.showTooltip(findNode(n.id()), evt.originalEvent.clientX, evt.originalEvent.clientY);
     });
+
     cy.on("mousemove", "node", evt => {
-      const node = findNode(evt.target.id());
-      FlowPanel.showTooltip(node, evt.originalEvent.clientX, evt.originalEvent.clientY);
+      FlowPanel.showTooltip(findNode(evt.target.id()), evt.originalEvent.clientX, evt.originalEvent.clientY);
     });
-    cy.on("mouseout", "node", () => {
+
+    cy.on("mouseout", "node", evt => {
+      const n = evt.target;
+      n.scratch("_isHovered", false);
+      const natW = n.scratch("_natW");
+      const natH = n.scratch("_natH");
+      if (natW !== undefined && natH !== undefined) {
+        n.stop(true, true);
+        // 縮回後立刻重新套用最小尺寸保護
+        n.animate({
+          style: { width: natW, height: natH },
+          duration: 150,
+          easing: "ease-out",
+          complete: () => { enforceMinNodeScreenSize(); },
+        });
+      }
       if (selectedId) highlightNeighborhood(selectedId);
       else clearHighlight();
       FlowPanel.hideTooltip();
     });
+
     cy.on("tap", evt => {
       if (evt.target === cy) {
         selectedId = null;
         clearHighlight();
         if (onSelectCallback) onSelectCallback(null);
       }
+    });
+
+    // 最小節點尺寸：zoom 事件用 RAF 節流，避免每幀呼叫
+    cy.on("zoom", () => {
+      if (_zoomRafId !== null) return;
+      _zoomRafId = requestAnimationFrame(() => {
+        _zoomRafId = null;
+        enforceMinNodeScreenSize();
+      });
     });
   }
 
@@ -215,7 +286,18 @@ window.FlowGraph = (() => {
 
   function layout() {
     if (!cy) return;
-    cy.layout({ name: "breadthfirst", directed: true, spacingFactor: 1.35, animate: true, animationDuration: 420 }).run();
+    const lay = cy.layout({ name: "breadthfirst", directed: true, spacingFactor: 1.35, animate: true, animationDuration: 420 });
+    lay.on("layoutstop", () => {
+      // 版面完成後存自然尺寸，供 hover 放大與最小尺寸保護使用
+      cy.nodes().forEach(n => {
+        n.scratch("_natW", n.width());
+        n.scratch("_natH", n.height());
+        n.scratch("_isHovered", false);
+        n.scratch("_minSzActive", false);
+      });
+      enforceMinNodeScreenSize();
+    });
+    lay.run();
   }
 
   function fit() { cy?.fit(undefined, 40); }
@@ -268,6 +350,7 @@ window.FlowGraph = (() => {
   }
 
   function destroy() {
+    if (_zoomRafId !== null) { cancelAnimationFrame(_zoomRafId); _zoomRafId = null; }
     if (cy) {
       cy.destroy();
       cy = null;

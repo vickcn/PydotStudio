@@ -62,6 +62,8 @@ DEFAULT_VIEWER_CONFIG: Dict[str, Any] = {
         "node_label_color_on_light_fill": "#0f172a",
         "node_label_color_on_dark_fill": "#e5e7eb",
         "light_fill_luminance_threshold": 0.65,
+        "node_hover_scale": 1.6,
+        "node_min_screen_px": 28,
     },
     "three_3d": {
         "node_background_opacity": 0.4,
