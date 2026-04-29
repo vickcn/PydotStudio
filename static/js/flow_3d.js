@@ -524,12 +524,77 @@ window.FlowGraph3D = (() => {
     svg.innerHTML = parts.join("");
   }
 
+  /*
+   * 每幀執行：
+   * 1. hover 動畫 — 對目標倍率做指數 lerp，讓縮放平滑
+   * 2. 最小螢幕尺寸 — 根據相機距離動態放大節點，使其不小於
+   *    viewport 高度的 node_min_screen_fraction 比例
+   */
+  function applyAllNodeScales() {
+    if (!graph || !containerEl || typeof THREE === "undefined") return;
+    const cfg = getCfg();
+    const minFrac =
+      cfg.node_min_screen_fraction !== undefined && Number.isFinite(Number(cfg.node_min_screen_fraction))
+        ? Number(cfg.node_min_screen_fraction)
+        : 0.025;
+    const maxUp =
+      cfg.node_min_size_max_scale !== undefined && Number.isFinite(Number(cfg.node_min_size_max_scale))
+        ? Number(cfg.node_min_size_max_scale)
+        : 5;
+    const lerpK = 0.18;
+
+    const cam = typeof graph.camera === "function" ? graph.camera() : null;
+    if (!cam || !cam.position) return;
+
+    const fovDeg = typeof cam.fov === "number" ? cam.fov : 50;
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2);
+    const camX = cam.position.x;
+    const camY = cam.position.y;
+    const camZ = cam.position.z;
+
+    const nodes = graphDataNodes();
+    for (let i = 0; i < nodes.length; i++) {
+      const nd = nodes[i];
+      const obj = nd.__threeObj;
+      if (!obj || !obj.userData || !obj.userData.naturalScale) continue;
+
+      const ns = obj.userData.naturalScale;
+
+      // 平滑 lerp hover 倍率
+      const ht = typeof obj.userData.hoverTarget === "number" ? obj.userData.hoverTarget : 1.0;
+      let hm = typeof obj.userData.hoverMult === "number" ? obj.userData.hoverMult : 1.0;
+      hm += (ht - hm) * lerpK;
+      if (Math.abs(ht - hm) < 0.002) hm = ht;
+      obj.userData.hoverMult = hm;
+
+      // 相機到節點距離
+      const nx = nd.x !== undefined ? nd.x : 0;
+      const ny = nd.y !== undefined ? nd.y : 0;
+      const nz = nd.z !== undefined ? nd.z : 0;
+      const ddx = camX - nx;
+      const ddy = camY - ny;
+      const ddz = camZ - nz;
+      const dist = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+
+      // 維持最小螢幕高度所需的世界單位高度
+      let sizeU = 1.0;
+      if (dist > 0 && minFrac > 0 && ns.y > 0) {
+        const minWorldH = 2 * dist * tanHalf * minFrac;
+        sizeU = Math.min(maxUp, Math.max(1.0, minWorldH / ns.y));
+      }
+
+      const finalU = sizeU * hm;
+      obj.scale.set(ns.x * finalU, ns.y * finalU, 1);
+    }
+  }
+
   function startViewportRimArrowsLoop() {
     stopViewportRimArrows();
     function tick() {
       rimArrowRafId = requestAnimationFrame(tick);
       syncRimSvgLayout();
       updateViewportRimArrowsContent();
+      applyAllNodeScales();
     }
     rimArrowRafId = requestAnimationFrame(tick);
     if (graph && typeof graph.controls === "function") {
@@ -836,6 +901,9 @@ window.FlowGraph3D = (() => {
     }
     sprite.scale.set(sx, sy, 1);
     sprite.userData.texture = texture;
+    sprite.userData.naturalScale = new THREE.Vector3(sx, sy, 1);
+    sprite.userData.hoverMult = 1.0;
+    sprite.userData.hoverTarget = 1.0;
     return sprite;
   }
 
@@ -1153,6 +1221,19 @@ window.FlowGraph3D = (() => {
         if (onSelectCallback) onSelectCallback(sId);
         pushAnchorVisit(sId);
         focusViewportOnNodeId(sId);
+      }
+    });
+
+    const hoverScale =
+      cfg.node_hover_scale !== undefined && Number.isFinite(Number(cfg.node_hover_scale)) && Number(cfg.node_hover_scale) > 0
+        ? Number(cfg.node_hover_scale)
+        : 1.4;
+    graph.onNodeHover((node, prevNode) => {
+      if (prevNode && prevNode.__threeObj && prevNode.__threeObj.userData) {
+        prevNode.__threeObj.userData.hoverTarget = 1.0;
+      }
+      if (node && node.__threeObj && node.__threeObj.userData && node.__threeObj.userData.naturalScale) {
+        node.__threeObj.userData.hoverTarget = hoverScale;
       }
     });
 
