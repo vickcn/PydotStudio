@@ -96,7 +96,7 @@ DEFAULT_VIEWER_CONFIG: Dict[str, Any] = {
         "link_curvature": 0.14,
         "label_text_stroke_color": "#000000",
         "label_text_stroke_width_px": 2.75,
-        "node_hover_scale": 1.4,
+        "node_hover_max_scale": 12,
         "node_min_screen_fraction": 0.025,
         "node_min_size_max_scale": 5,
     },

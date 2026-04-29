@@ -526,31 +526,42 @@ window.FlowGraph3D = (() => {
 
   /*
    * 每幀執行：
-   * 1. hover 動畫 — 對目標倍率做指數 lerp，讓縮放平滑
-   * 2. 最小螢幕尺寸 — 根據相機距離動態放大節點，使其不小於
+   * 1. 最小螢幕尺寸 — 根據相機距離動態放大節點，使其不小於
    *    viewport 高度的 node_min_screen_fraction 比例
+   * 2. Hover 放大 — hover 節點縮放到「焦點節點」的螢幕尺寸
+   *    公式：hoverU = dist / dFocusRef，讓節點呈現與雙擊聚焦時相同的視覺大小
+   *    currentU 以 lerp 平滑過渡，避免瞬間跳變
    */
   function applyAllNodeScales() {
     if (!graph || !containerEl || typeof THREE === "undefined") return;
     const cfg = getCfg();
+
     const minFrac =
       cfg.node_min_screen_fraction !== undefined && Number.isFinite(Number(cfg.node_min_screen_fraction))
-        ? Number(cfg.node_min_screen_fraction)
-        : 0.025;
-    const maxUp =
+        ? Number(cfg.node_min_screen_fraction) : 0.025;
+    const maxMinUp =
       cfg.node_min_size_max_scale !== undefined && Number.isFinite(Number(cfg.node_min_size_max_scale))
-        ? Number(cfg.node_min_size_max_scale)
-        : 5;
+        ? Number(cfg.node_min_size_max_scale) : 5;
+    const maxHoverUp =
+      cfg.node_hover_max_scale !== undefined && Number.isFinite(Number(cfg.node_hover_max_scale))
+        ? Number(cfg.node_hover_max_scale) : 12;
     const lerpK = 0.18;
 
     const cam = typeof graph.camera === "function" ? graph.camera() : null;
     if (!cam || !cam.position) return;
 
     const fovDeg = typeof cam.fov === "number" ? cam.fov : 50;
-    const tanHalf = Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2);
+    const tanHalf = Math.max(Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2), 0.01);
     const camX = cam.position.x;
     const camY = cam.position.y;
     const camZ = cam.position.z;
+
+    // 焦點參考距離：與 focusViewportOnNodeId 使用相同公式
+    const fSpriteH = cfg.focus_sprite_world_extent !== undefined ? Number(cfg.focus_sprite_world_extent) : 40;
+    const fFrac    = cfg.focus_target_screen_fraction !== undefined ? Number(cfg.focus_target_screen_fraction) : 1 / 3;
+    const fBoost   = cfg.focus_viewport_boost !== undefined ? Number(cfg.focus_viewport_boost) : 1.22;
+    const fZoom    = cfg.focus_apparent_zoom !== undefined ? Number(cfg.focus_apparent_zoom) : 2.5;
+    const dFocusRef = fSpriteH / (2 * Math.max(fFrac, 0.01) * tanHalf) / Math.max(fBoost, 0.1) / Math.max(fZoom, 0.1);
 
     const nodes = graphDataNodes();
     for (let i = 0; i < nodes.length; i++) {
@@ -559,13 +570,6 @@ window.FlowGraph3D = (() => {
       if (!obj || !obj.userData || !obj.userData.naturalScale) continue;
 
       const ns = obj.userData.naturalScale;
-
-      // 平滑 lerp hover 倍率
-      const ht = typeof obj.userData.hoverTarget === "number" ? obj.userData.hoverTarget : 1.0;
-      let hm = typeof obj.userData.hoverMult === "number" ? obj.userData.hoverMult : 1.0;
-      hm += (ht - hm) * lerpK;
-      if (Math.abs(ht - hm) < 0.002) hm = ht;
-      obj.userData.hoverMult = hm;
 
       // 相機到節點距離
       const nx = nd.x !== undefined ? nd.x : 0;
@@ -576,15 +580,29 @@ window.FlowGraph3D = (() => {
       const ddz = camZ - nz;
       const dist = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
 
-      // 維持最小螢幕高度所需的世界單位高度
+      // 最小螢幕高度所需縮放
       let sizeU = 1.0;
       if (dist > 0 && minFrac > 0 && ns.y > 0) {
         const minWorldH = 2 * dist * tanHalf * minFrac;
-        sizeU = Math.min(maxUp, Math.max(1.0, minWorldH / ns.y));
+        sizeU = Math.min(maxMinUp, Math.max(1.0, minWorldH / ns.y));
       }
 
-      const finalU = sizeU * hm;
-      obj.scale.set(ns.x * finalU, ns.y * finalU, 1);
+      // 目標縮放：hover 時放大到焦點節點同等螢幕尺寸
+      let targetU;
+      if (obj.userData.isHovered === true && dFocusRef > 0 && dist > 0) {
+        const focusU = Math.min(maxHoverUp, Math.max(1.0, dist / dFocusRef));
+        targetU = Math.max(sizeU, focusU);
+      } else {
+        targetU = sizeU;
+      }
+
+      // 平滑 lerp
+      let cur = typeof obj.userData.currentU === "number" ? obj.userData.currentU : 1.0;
+      cur += (targetU - cur) * lerpK;
+      if (Math.abs(targetU - cur) < 0.002) cur = targetU;
+      obj.userData.currentU = cur;
+
+      obj.scale.set(ns.x * cur, ns.y * cur, 1);
     }
   }
 
@@ -902,8 +920,8 @@ window.FlowGraph3D = (() => {
     sprite.scale.set(sx, sy, 1);
     sprite.userData.texture = texture;
     sprite.userData.naturalScale = new THREE.Vector3(sx, sy, 1);
-    sprite.userData.hoverMult = 1.0;
-    sprite.userData.hoverTarget = 1.0;
+    sprite.userData.isHovered = false;
+    sprite.userData.currentU = 1.0;
     return sprite;
   }
 
@@ -1224,16 +1242,12 @@ window.FlowGraph3D = (() => {
       }
     });
 
-    const hoverScale =
-      cfg.node_hover_scale !== undefined && Number.isFinite(Number(cfg.node_hover_scale)) && Number(cfg.node_hover_scale) > 0
-        ? Number(cfg.node_hover_scale)
-        : 1.4;
     graph.onNodeHover((node, prevNode) => {
       if (prevNode && prevNode.__threeObj && prevNode.__threeObj.userData) {
-        prevNode.__threeObj.userData.hoverTarget = 1.0;
+        prevNode.__threeObj.userData.isHovered = false;
       }
       if (node && node.__threeObj && node.__threeObj.userData && node.__threeObj.userData.naturalScale) {
-        node.__threeObj.userData.hoverTarget = hoverScale;
+        node.__threeObj.userData.isHovered = true;
       }
     });
 
