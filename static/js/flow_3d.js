@@ -32,6 +32,7 @@ window.FlowGraph3D = (() => {
   let anchorHistory = [];
   let anchorCursor = -1;
   let suspendAnchorPush = false;
+  let trackedTextures = [];
 
   function resetNavigationState() {
     homeNodeId = "";
@@ -333,9 +334,10 @@ window.FlowGraph3D = (() => {
     let nz = dx * 1 - dy * 0;
     let nlen = Math.sqrt(nx * nx + ny * ny + nz * nz);
     if (nlen < 1e-9) {
-      nx = dz * 0 - dx * 0;
-      ny = dx * 1 - dz * 0;
-      nz = dy * 0 - dx * 1;
+      // Fallback: cross with X-axis → (0, dz, -dy), valid for Y-axis aligned edges
+      nx = 0;
+      ny = dz;
+      nz = -dy;
       nlen = Math.sqrt(nx * nx + ny * ny + nz * nz);
     }
     if (nlen < 1e-9) {
@@ -804,6 +806,7 @@ window.FlowGraph3D = (() => {
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
+    trackedTextures.push(texture);
     const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
     const sprite = new THREE.Sprite(mat);
     /*
@@ -935,6 +938,8 @@ window.FlowGraph3D = (() => {
 
   function teardownGraphDom() {
     stopViewportRimArrows();
+    trackedTextures.forEach(t => { try { t.dispose(); } catch (ignored) { void ignored; } });
+    trackedTextures = [];
     if (graph) {
       try {
         if (typeof graph._destructor === "function") graph._destructor();
@@ -1030,11 +1035,11 @@ window.FlowGraph3D = (() => {
     if (typeof graph.linkTarget === "function") graph.linkTarget("target");
     if (typeof graph.backgroundColor === "function") graph.backgroundColor(bg);
 
-    if (typeof graph.showParticles === "function") graph.showParticles(Boolean(cfg.show_particles));
-
     graph.linkOpacity(cfg.link_opacity !== undefined ? Number(cfg.link_opacity) : 0.88);
     graph.linkColor(() => cfg.link_color || "#64748b");
-    if (typeof graph.linkDirectionalParticles === "function") graph.linkDirectionalParticles(0);
+    if (typeof graph.linkDirectionalParticles === "function") {
+      graph.linkDirectionalParticles(cfg.show_particles ? 4 : 0);
+    }
     const arrLen = cfg.link_directional_arrow_length !== undefined ? Number(cfg.link_directional_arrow_length) : 7.5;
     const arrRel = cfg.link_directional_arrow_rel_pos !== undefined ? Number(cfg.link_directional_arrow_rel_pos) : 1;
     const baseLinkColor = cfg.link_color || "#64748b";
