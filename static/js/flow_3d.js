@@ -1040,12 +1040,13 @@ window.FlowGraph3D = (() => {
     if (typeof graph.linkDirectionalParticles === "function") {
       graph.linkDirectionalParticles(cfg.show_particles ? 4 : 0);
     }
-    const arrLen = cfg.link_directional_arrow_length !== undefined ? Number(cfg.link_directional_arrow_length) : 7.5;
-    const arrRel = cfg.link_directional_arrow_rel_pos !== undefined ? Number(cfg.link_directional_arrow_rel_pos) : 1;
+    const arrLen = cfg.link_directional_arrow_length !== undefined ? Number(cfg.link_directional_arrow_length) : 10;
+    const arrRel = cfg.link_directional_arrow_rel_pos !== undefined ? Number(cfg.link_directional_arrow_rel_pos) : 0.85;
     const baseLinkColor = cfg.link_color || "#64748b";
+    const arrColor = cfg.link_directional_arrow_color !== undefined ? String(cfg.link_directional_arrow_color) : "#94a3b8";
     if (typeof graph.linkDirectionalArrowLength === "function") graph.linkDirectionalArrowLength(arrLen);
     if (typeof graph.linkDirectionalArrowRelPos === "function") graph.linkDirectionalArrowRelPos(arrRel);
-    if (typeof graph.linkDirectionalArrowColor === "function") graph.linkDirectionalArrowColor(() => baseLinkColor);
+    if (typeof graph.linkDirectionalArrowColor === "function") graph.linkDirectionalArrowColor(() => arrColor);
     if (typeof graph.linkCurvature === "function") graph.linkCurvature(cfg.link_curvature !== undefined ? Number(cfg.link_curvature) : 0.14);
     if (typeof graph.linkWidth === "function") graph.linkWidth(0.72);
 
