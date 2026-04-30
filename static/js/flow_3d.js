@@ -33,6 +33,7 @@ window.FlowGraph3D = (() => {
   let anchorCursor = -1;
   let suspendAnchorPush = false;
   let trackedTextures = [];
+  let trackedLinkMeshes = [];
 
   function resetNavigationState() {
     homeNodeId = "";
@@ -1015,6 +1016,18 @@ window.FlowGraph3D = (() => {
       const touches = set && (set.has(a) || set.has(b));
       return touches ? baseEdge : baseEdge * 0.12;
     });
+    // 同步源端箭頭錐透明度，使其跟隨 link dimming
+    try {
+      const gd = typeof graph.graphData === "function" ? graph.graphData() : null;
+      (gd?.links || []).forEach(link => {
+        const cone = link.__srcArrowCone;
+        if (!cone || !cone.material) return;
+        const sId = String(typeof link.source === "object" ? (link.source.id ?? "") : (link.source ?? ""));
+        const tId = String(typeof link.target === "object" ? (link.target.id ?? "") : (link.target ?? ""));
+        const touches = set && (set.has(sId) || set.has(tId));
+        cone.material.opacity = !selectedId ? 0.85 : touches ? 0.85 : 0.85 * 0.12;
+      });
+    } catch (ignored) { void ignored; }
     try {
       if (graph && typeof graph.refresh === "function") graph.refresh();
     } catch (ignored) {
@@ -1026,6 +1039,11 @@ window.FlowGraph3D = (() => {
     stopViewportRimArrows();
     trackedTextures.forEach(t => { try { t.dispose(); } catch (ignored) { void ignored; } });
     trackedTextures = [];
+    trackedLinkMeshes.forEach(({ geo, mat }) => {
+      try { geo.dispose(); } catch (ignored) { void ignored; }
+      try { mat.dispose(); } catch (ignored) { void ignored; }
+    });
+    trackedLinkMeshes = [];
     if (graph) {
       try {
         if (typeof graph._destructor === "function") graph._destructor();
@@ -1135,6 +1153,45 @@ window.FlowGraph3D = (() => {
     if (typeof graph.linkDirectionalArrowColor === "function") graph.linkDirectionalArrowColor(() => arrColor);
     if (typeof graph.linkCurvature === "function") graph.linkCurvature(cfg.link_curvature !== undefined ? Number(cfg.link_curvature) : 0.14);
     if (typeof graph.linkWidth === "function") graph.linkWidth(0.72);
+
+    // Source-side arrow cones (both-ends arrows)
+    if (typeof graph.linkThreeObject === "function" && typeof THREE !== "undefined") {
+      const srcRelPos = 1 - arrRel;
+      const _yUp = new THREE.Vector3(0, 1, 0);
+      graph.linkThreeObject(link => {
+        const r = arrLen * 0.25;
+        const geo = new THREE.ConeGeometry(r, arrLen, 6);
+        const mat = new THREE.MeshLambertMaterial({
+          color: new THREE.Color(arrColor),
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: true,
+        });
+        const cone = new THREE.Mesh(geo, mat);
+        link.__srcArrowCone = cone;
+        trackedLinkMeshes.push({ geo, mat });
+        return cone;
+      });
+      if (typeof graph.linkThreeObjectExtend === "function") graph.linkThreeObjectExtend(true);
+      if (typeof graph.linkPositionUpdate === "function") {
+        graph.linkPositionUpdate((cone, { start, end }) => {
+          if (!cone || !cone.isMesh) return false;
+          cone.position.set(
+            start.x + (end.x - start.x) * srcRelPos,
+            start.y + (end.y - start.y) * srcRelPos,
+            start.z + (end.z - start.z) * srcRelPos,
+          );
+          const dx = end.x - start.x;
+          const dy = end.y - start.y;
+          const dz = end.z - start.z;
+          const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (len > 1e-6) {
+            cone.quaternion.setFromUnitVectors(_yUp, new THREE.Vector3(dx / len, dy / len, dz / len));
+          }
+          return true;
+        });
+      }
+    }
 
     if (cfg.warmup_ticks !== undefined && typeof graph.warmupTicks === "function") {
       graph.warmupTicks(Number(cfg.warmup_ticks));
