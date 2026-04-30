@@ -107,26 +107,32 @@ window.FlowGraph3D = (() => {
     tip.classList.remove("hidden");
 
     const pad = 14;
-    tip.style.left = "0px";
+    // 先重置，避免上次殘留影響 offsetWidth 讀取
+    tip.style.left = "-9999px";
     tip.style.top = "0px";
-    const tw = Math.min(340, Math.max(200, tip.offsetWidth || 280));
-    let left = mx - tw / 2;
-    let top = my - 18;
+    tip.style.maxWidth = "";
 
-    // 用 3D 容器邊界 clamp（edgeOtherTip 是 position:fixed，left/top 相對視窗）
+    // 取 3D 容器邊界（edgeOtherTip 是 position:fixed，座標相對視窗）
     const _stageEl = containerEl || document.getElementById("fg3d");
     const _rect = _stageEl ? _stageEl.getBoundingClientRect() : null;
-    const areaLeft  = _rect ? _rect.left  + pad : pad;
-    const areaTop   = _rect ? _rect.top   + pad : pad;
-    const areaRight = _rect ? _rect.right - pad : window.innerWidth  - pad;
-    const areaBottom= _rect ? _rect.bottom - pad : window.innerHeight - pad;
+    const areaLeft   = _rect ? _rect.left   + pad : pad;
+    const areaTop    = _rect ? _rect.top    + pad : pad;
+    const areaRight  = _rect ? _rect.right  - pad : window.innerWidth  - pad;
+    const areaBottom = _rect ? _rect.bottom - pad : window.innerHeight - pad;
 
+    // 先限制 maxWidth 不超出可用空間，再量實際尺寸
+    const availW = Math.max(160, areaRight - areaLeft);
+    tip.style.maxWidth = `${Math.min(320, availW)}px`;
+    const tw = tip.offsetWidth || 280;
     const th = tip.offsetHeight || 120;
+
+    let left = mx - tw / 2;
+    let top  = my - 18;
     left = Math.min(areaRight - tw, Math.max(areaLeft, left));
     top  = Math.min(areaBottom - th, Math.max(areaTop, top - th));
 
     tip.style.left = `${Math.round(left)}px`;
-    tip.style.top = `${Math.round(top)}px`;
+    tip.style.top  = `${Math.round(top)}px`;
   }
 
   function initNavigationFromFlow(flowData) {
