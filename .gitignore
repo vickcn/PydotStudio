@@ -206,3 +206,5 @@ report_20250902*
 
 *tmp*
 !template
+
+**.code-workspace
