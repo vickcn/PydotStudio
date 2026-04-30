@@ -135,6 +135,7 @@ uploads/
 *.bak*/
 
 *.txt
+!requirements.txt
 .cursor*/
 log*.txt
 log*/

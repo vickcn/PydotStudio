@@ -12,16 +12,8 @@ import pydot
 
 sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from package import dataframeprocedure as DFP
-LOGger = DFP.LOGger
-
 
 def load_json_robust(path: str, encoding: str = "utf-8-sig") -> Dict[str, Any]:
-    try:
-        return LOGger.load_json(path, encoding=encoding)
-    except Exception:
-        pass
-
     with open(path, "rb") as f:
         raw = f.read()
 

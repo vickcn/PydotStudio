@@ -2,7 +2,6 @@
 import os
 from typing import Any, Dict, Optional
 
-import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -74,6 +73,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    import uvicorn
+
     args = _parse_args()
     host = args.host or CONFIG.get("host", "0.0.0.0")
     port = args.port or int(CONFIG.get("port", 8010))
