@@ -123,6 +123,7 @@ exports/
 *.json
 *.pkl
 !examples/*.json
+!vercel.json
 logs/
 temp/
 uploads/
