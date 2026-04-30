@@ -70,11 +70,11 @@ window.FlowGraph = (() => {
         if (natH === undefined || natW === undefined) return;
         const screenH = natH * z;
         if (screenH < minPx) {
-          const u = minPx / screenH;
-          n.style({ width: natW * u, height: natH * u });
+          const u = Math.min(5, minPx / screenH);
+          n.style({ width: natW * u, height: natH * u, "font-size": Math.round(12 * u) });
           n.scratch("_minSzActive", true);
         } else if (n.scratch("_minSzActive")) {
-          n.style({ width: natW, height: natH });
+          n.style({ width: natW, height: natH, "font-size": 12 });
           n.scratch("_minSzActive", false);
         }
       });
@@ -159,7 +159,6 @@ window.FlowGraph = (() => {
     cy.on("mouseover", "node", evt => {
       const n = evt.target;
       n.scratch("_isHovered", true);
-      // 懸停放大：以自然尺寸 × node_hover_scale
       const natW = n.scratch("_natW") !== undefined ? n.scratch("_natW") : n.width();
       const natH = n.scratch("_natH") !== undefined ? n.scratch("_natH") : n.height();
       if (n.scratch("_natW") === undefined) { n.scratch("_natW", natW); n.scratch("_natH", natH); }
@@ -167,8 +166,15 @@ window.FlowGraph = (() => {
       const hs =
         cfg.node_hover_scale !== undefined && Number.isFinite(Number(cfg.node_hover_scale)) && Number(cfg.node_hover_scale) > 0
           ? Number(cfg.node_hover_scale) : 1.6;
+      const minPx =
+        cfg.node_min_screen_px !== undefined && Number.isFinite(Number(cfg.node_min_screen_px))
+          ? Math.max(0, Number(cfg.node_min_screen_px)) : 28;
+      // hover base = max(natural, min-size-compensated) so hover is always visually larger
+      const baseScale = Math.max(1, minPx / (natH * cy.zoom()));
+      const hoverW = natW * baseScale * hs;
+      const hoverH = natH * baseScale * hs;
       n.stop(true, true);
-      n.animate({ style: { width: natW * hs, height: natH * hs }, duration: 180, easing: "ease-out" });
+      n.animate({ style: { width: hoverW, height: hoverH, "font-size": Math.round(12 * baseScale * hs) }, duration: 180, easing: "ease-out" });
       highlightNeighborhood(n.id());
       FlowPanel.showTooltip(findNode(n.id()), evt.originalEvent.clientX, evt.originalEvent.clientY);
     });
@@ -186,7 +192,7 @@ window.FlowGraph = (() => {
         n.stop(true, true);
         // 縮回後立刻重新套用最小尺寸保護
         n.animate({
-          style: { width: natW, height: natH },
+          style: { width: natW, height: natH, "font-size": 12 },
           duration: 150,
           easing: "ease-out",
           complete: () => { enforceMinNodeScreenSize(); },
