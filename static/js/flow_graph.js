@@ -48,20 +48,98 @@ window.FlowGraph = (() => {
     return cfg.node_label_color_on_dark_fill || "#e5e7eb";
   }
 
+  function getBaseNodeFontSize() {
+    const cfg = getViewerCy();
+    const v = Number(cfg.node_font_size);
+    return Number.isFinite(v) && v > 0 ? v : 24;
+  }
+
+  function getBaseNodeTextMaxWidth() {
+    const cfg = getViewerCy();
+    const v = Number(cfg.node_text_max_width);
+    return Number.isFinite(v) && v > 0 ? v : 260;
+  }
+
+  function getNodeMinSizeMaxScale() {
+    const cfg = getViewerCy();
+    const v = Number(cfg.node_min_size_max_scale);
+    return Number.isFinite(v) && v > 0 ? v : 14;
+  }
+
+  function staggerOverlappingNodesVertically() {
+    if (!cy) return false;
+    const cfg = getViewerCy();
+    const gap =
+      cfg.node_stagger_gap !== undefined && Number.isFinite(Number(cfg.node_stagger_gap))
+        ? Math.max(0, Number(cfg.node_stagger_gap))
+        : 10;
+    const step =
+      cfg.node_stagger_step !== undefined && Number.isFinite(Number(cfg.node_stagger_step))
+        ? Math.max(2, Number(cfg.node_stagger_step))
+        : 24;
+    const maxPasses =
+      cfg.node_stagger_passes !== undefined && Number.isFinite(Number(cfg.node_stagger_passes))
+        ? Math.max(1, Math.floor(Number(cfg.node_stagger_passes)))
+        : 3;
+    const nodes = cy.nodes().toArray();
+    if (nodes.length < 2) return false;
+
+    let moved = false;
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+      let movedThisPass = false;
+      cy.batch(() => {
+        for (let i = 0; i < nodes.length; i += 1) {
+          const a = nodes[i];
+          if (a.scratch("_isHovered")) continue;
+          for (let j = i + 1; j < nodes.length; j += 1) {
+            const b = nodes[j];
+            if (b.scratch("_isHovered")) continue;
+
+            const pa = a.position();
+            const pb = b.position();
+            const aw = a.width();
+            const ah = a.height();
+            const bw = b.width();
+            const bh = b.height();
+            const dx = Math.abs(pa.x - pb.x);
+            const dy = Math.abs(pa.y - pb.y);
+            const overlapX = dx < ((aw + bw) / 2 + gap);
+            const overlapY = dy < ((ah + bh) / 2 + gap);
+            if (!overlapX || !overlapY) continue;
+
+            const minDy = (ah + bh) / 2 + gap;
+            const push = Math.max(step, (minDy - dy) / 2);
+            const dir = ((i + pass) % 2 === 0) ? -1 : 1;
+            a.position("y", pa.y + dir * push);
+            b.position("y", pb.y - dir * push);
+            moved = true;
+            movedThisPass = true;
+          }
+        }
+      });
+      if (!movedThisPass) break;
+    }
+    return moved;
+  }
+
   /*
    * 依目前 zoom 值，對超出最小螢幕高度 (node_min_screen_px) 的節點強制放大。
    * 使用 cy.batch() 一次提交，避免多次重排。
    * 懸停中的節點跳過（hover 已自行放大）。
    */
   function enforceMinNodeScreenSize() {
-    if (!cy) return;
+    if (!cy) return false;
     const cfg = getViewerCy();
     const minPx =
       cfg.node_min_screen_px !== undefined && Number.isFinite(Number(cfg.node_min_screen_px))
         ? Math.max(0, Number(cfg.node_min_screen_px))
-        : 28;
-    if (minPx <= 0) return;
+        : 56;
+    if (minPx <= 0) return false;
     const z = cy.zoom();
+    const baseFontSize = getBaseNodeFontSize();
+    const baseTextMaxWidth = getBaseNodeTextMaxWidth();
+    const maxScale = getNodeMinSizeMaxScale();
+    let hasActive = false;
     cy.batch(() => {
       cy.nodes().forEach(n => {
         if (n.scratch("_isHovered")) return;
@@ -70,20 +148,34 @@ window.FlowGraph = (() => {
         if (natH === undefined || natW === undefined) return;
         const screenH = natH * z;
         if (screenH < minPx) {
-          const u = Math.min(5, minPx / screenH);
-          n.style({ width: natW * u, height: natH * u, "font-size": Math.round(12 * u) });
+          const u = Math.min(maxScale, minPx / screenH);
+          n.style({
+            width: natW * u,
+            height: natH * u,
+            "font-size": Math.max(1, Math.round(baseFontSize * u)),
+            "text-max-width": Math.max(1, Math.round(baseTextMaxWidth * u)),
+          });
           n.scratch("_minSzActive", true);
+          hasActive = true;
         } else if (n.scratch("_minSzActive")) {
-          n.style({ width: natW, height: natH, "font-size": 12 });
+          n.style({
+            width: natW,
+            height: natH,
+            "font-size": baseFontSize,
+            "text-max-width": baseTextMaxWidth,
+          });
           n.scratch("_minSzActive", false);
         }
       });
     });
+    return hasActive;
   }
 
   function init(containerId, onSelect) {
     destroy();
     onSelectCallback = onSelect;
+    const baseFontSize = getBaseNodeFontSize();
+    const baseTextMaxWidth = getBaseNodeTextMaxWidth();
     cy = cytoscape({
       container: document.getElementById(containerId),
       elements: [],
@@ -94,9 +186,10 @@ window.FlowGraph = (() => {
           style: {
             "label": "data(label)",
             "text-wrap": "wrap",
-            "text-max-width": 190,
+            "text-max-width": baseTextMaxWidth,
+            "text-overflow-wrap": "anywhere",
             "font-family": "Microsoft JhengHei, Segoe UI, sans-serif",
-            "font-size": 12,
+            "font-size": baseFontSize,
             "font-weight": 700,
             "color": "data(labelColor)",
             "background-color": "data(fillcolor)",
@@ -105,7 +198,7 @@ window.FlowGraph = (() => {
             "shape": "data(cyShape)",
             "width": "label",
             "height": "label",
-            "padding": "16px",
+            "padding": "28px",
             "text-valign": "center",
             "text-halign": "center",
             "overlay-opacity": 0,
@@ -116,16 +209,20 @@ window.FlowGraph = (() => {
           style: {
             "label": "data(label)",
             "font-family": "Microsoft JhengHei, Segoe UI, sans-serif",
-            "font-size": 10,
+            // edge 上的文字大小
+            "font-size": 150,
             "color": "#cbd5e1",
             "text-background-color": "#020617",
             "text-background-opacity": 0.78,
             "text-background-padding": 3,
             "line-color": "#64748b",
             "target-arrow-color": "#64748b",
+            // 箭頭大小
+            "arrow-scale": 7,
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            "width": 1.8,
+            // 線條粗細
+            "width": 20,
           }
         },
         {
@@ -150,6 +247,13 @@ window.FlowGraph = (() => {
             "border-color": "#34d399",
             "box-shadow": "0 0 24px #34d399",
           }
+        },
+        {
+          selector: ".hovered",
+          style: {
+            "z-index-compare": "manual",
+            "z-index": 9999,
+          }
         }
       ],
     });
@@ -159,6 +263,7 @@ window.FlowGraph = (() => {
     cy.on("mouseover", "node", evt => {
       const n = evt.target;
       n.scratch("_isHovered", true);
+      n.addClass("hovered");
       const natW = n.scratch("_natW") !== undefined ? n.scratch("_natW") : n.width();
       const natH = n.scratch("_natH") !== undefined ? n.scratch("_natH") : n.height();
       if (n.scratch("_natW") === undefined) { n.scratch("_natW", natW); n.scratch("_natH", natH); }
@@ -168,34 +273,55 @@ window.FlowGraph = (() => {
           ? Number(cfg.node_hover_scale) : 1.6;
       const minPx =
         cfg.node_min_screen_px !== undefined && Number.isFinite(Number(cfg.node_min_screen_px))
-          ? Math.max(0, Number(cfg.node_min_screen_px)) : 28;
+          ? Math.max(0, Number(cfg.node_min_screen_px)) : 56;
       // hover base = max(natural, min-size-compensated) so hover is always visually larger
       const baseScale = Math.max(1, minPx / (natH * cy.zoom()));
       const hoverW = natW * baseScale * hs;
       const hoverH = natH * baseScale * hs;
       n.stop(true, true);
-      n.animate({ style: { width: hoverW, height: hoverH, "font-size": Math.round(12 * baseScale * hs) }, duration: 180, easing: "ease-out" });
+      const hoverScale = baseScale * hs;
+      n.animate({
+        style: {
+          width: hoverW,
+          height: hoverH,
+          "font-size": Math.max(1, Math.round(baseFontSize * hoverScale)),
+          "text-max-width": Math.max(1, Math.round(baseTextMaxWidth * hoverScale)),
+        },
+        duration: 180,
+        easing: "ease-out",
+      });
       highlightNeighborhood(n.id());
-      FlowPanel.showTooltip(findNode(n.id()), evt.originalEvent.clientX, evt.originalEvent.clientY);
+      const bounds = cy.container().getBoundingClientRect();
+      FlowPanel.showTooltip(findNode(n.id()), evt.originalEvent.clientX, evt.originalEvent.clientY, bounds);
     });
 
     cy.on("mousemove", "node", evt => {
-      FlowPanel.showTooltip(findNode(evt.target.id()), evt.originalEvent.clientX, evt.originalEvent.clientY);
+      const bounds = cy.container().getBoundingClientRect();
+      FlowPanel.showTooltip(findNode(evt.target.id()), evt.originalEvent.clientX, evt.originalEvent.clientY, bounds);
     });
 
     cy.on("mouseout", "node", evt => {
       const n = evt.target;
       n.scratch("_isHovered", false);
+      n.removeClass("hovered");
       const natW = n.scratch("_natW");
       const natH = n.scratch("_natH");
       if (natW !== undefined && natH !== undefined) {
         n.stop(true, true);
         // 縮回後立刻重新套用最小尺寸保護
         n.animate({
-          style: { width: natW, height: natH, "font-size": 12 },
+          style: {
+            width: natW,
+            height: natH,
+            "font-size": baseFontSize,
+            "text-max-width": baseTextMaxWidth,
+          },
           duration: 150,
           easing: "ease-out",
-          complete: () => { enforceMinNodeScreenSize(); },
+          complete: () => {
+            const hasActive = enforceMinNodeScreenSize();
+            if (hasActive) staggerOverlappingNodesVertically();
+          },
         });
       }
       if (selectedId) highlightNeighborhood(selectedId);
@@ -216,7 +342,8 @@ window.FlowGraph = (() => {
       if (_zoomRafId !== null) return;
       _zoomRafId = requestAnimationFrame(() => {
         _zoomRafId = null;
-        enforceMinNodeScreenSize();
+        const hasActive = enforceMinNodeScreenSize();
+        if (hasActive) staggerOverlappingNodesVertically();
       });
     });
   }
@@ -290,23 +417,48 @@ window.FlowGraph = (() => {
     return "round-rectangle";
   }
 
-  function layout() {
+  function layout(options = {}) {
     if (!cy) return;
-    const lay = cy.layout({ name: "breadthfirst", directed: true, spacingFactor: 1.35, animate: true, animationDuration: 420 });
+    const animate = options.animate !== undefined ? Boolean(options.animate) : true;
+    const fit = options.fit !== undefined ? Boolean(options.fit) : true;
+    const animationDuration = Number.isFinite(Number(options.animationDuration))
+      ? Number(options.animationDuration)
+      : 420;
+    const relayoutForMinSize = options.relayoutForMinSize !== undefined
+      ? Boolean(options.relayoutForMinSize)
+      : true;
+    const lay = cy.layout({
+      name: "breadthfirst",
+      directed: true,
+      spacingFactor: 1.35,
+      avoidOverlap: true,
+      fit,
+      animate,
+      animationDuration,
+    });
     lay.on("layoutstop", () => {
       // 版面完成後存自然尺寸，供 hover 放大與最小尺寸保護使用
       cy.nodes().forEach(n => {
-        n.scratch("_natW", n.width());
-        n.scratch("_natH", n.height());
+        if (n.scratch("_natW") === undefined) n.scratch("_natW", n.width());
+        if (n.scratch("_natH") === undefined) n.scratch("_natH", n.height());
         n.scratch("_isHovered", false);
         n.scratch("_minSzActive", false);
       });
-      enforceMinNodeScreenSize();
+      const hasActive = enforceMinNodeScreenSize();
+      if (hasActive) staggerOverlappingNodesVertically();
+      if (relayoutForMinSize && hasActive) {
+        layout({ animate: false, animationDuration: 0, fit: true, relayoutForMinSize: false });
+      }
     });
     lay.run();
   }
 
-  function fit() { cy?.fit(undefined, 40); }
+  // function fit() { cy?.fit(undefined, 40); }
+  function fit() {
+    cy?.fit(undefined, 20);
+    const hasActive = enforceMinNodeScreenSize();
+    if (hasActive) staggerOverlappingNodesVertically();
+  }
 
   function focusNodeInView(id) {
     if (!cy) return;

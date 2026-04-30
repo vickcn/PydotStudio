@@ -63,16 +63,50 @@ window.FlowPanel = (() => {
     `;
   }
 
-  function showTooltip(node, x, y) {
+  function showTooltip(node, x, y, bounds = null) {
     const tip = $("hoverTooltip");
-    tip.classList.remove("hidden");
-    tip.style.left = `${Math.min(x + 16, window.innerWidth - 350)}px`;
-    tip.style.top = `${Math.min(y + 16, window.innerHeight - 160)}px`;
+    const pad = 10;
+    const offset = 10;
     tip.innerHTML = `
       <div class="tooltip-title">${escapeHtml(node.label || node.id || "")}</div>
       <div class="tooltip-sub">${escapeHtml(node.id || "")} ${node.group ? "· " + escapeHtml(node.group) : ""}</div>
       <div class="tooltip-sub">${escapeHtml(FlowUtils.nodeSummary(node) || "無 meta 摘要")}</div>
     `;
+    tip.classList.remove("hidden");
+
+    const hostRect = tip.offsetParent?.getBoundingClientRect() || {
+      left: 0,
+      top: 0,
+      right: window.innerWidth,
+      bottom: window.innerHeight,
+    };
+    const rawLeft = Number.isFinite(bounds?.left) ? Number(bounds.left) : hostRect.left;
+    const rawTop = Number.isFinite(bounds?.top) ? Number(bounds.top) : hostRect.top;
+    const rawRight = Number.isFinite(bounds?.right) ? Number(bounds.right) : hostRect.right;
+    const rawBottom = Number.isFinite(bounds?.bottom) ? Number(bounds.bottom) : hostRect.bottom;
+
+    const areaLeft = Math.max(hostRect.left, rawLeft) + pad;
+    const areaTop = Math.max(hostRect.top, rawTop) + pad;
+    const areaRight = Math.min(hostRect.right, rawRight) - pad;
+    const areaBottom = Math.min(hostRect.bottom, rawBottom) - pad;
+    const areaWidth = Math.max(180, areaRight - areaLeft);
+    tip.style.width = `${Math.min(320, areaWidth)}px`;
+    tip.style.maxWidth = `${areaWidth}px`;
+
+    const tw = tip.offsetWidth || 320;
+    const th = tip.offsetHeight || 140;
+
+    let leftAbs = x + offset;
+    let topAbs = y + offset;
+
+    if (leftAbs + tw > areaRight) leftAbs = x - tw - offset;
+    if (topAbs + th > areaBottom) topAbs = y - th - offset;
+
+    leftAbs = Math.max(areaLeft, Math.min(leftAbs, Math.max(areaLeft, areaRight - tw)));
+    topAbs = Math.max(areaTop, Math.min(topAbs, Math.max(areaTop, areaBottom - th)));
+
+    tip.style.left = `${leftAbs - hostRect.left}px`;
+    tip.style.top = `${topAbs - hostRect.top}px`;
   }
 
   function hideTooltip() {
